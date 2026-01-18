@@ -8,9 +8,7 @@ __pycache__/
 venv/
 
 # Data (DO NOT COMMIT LARGE FILES)
-data/raw/
-data/processed/
-data/embeddings/
+data/
 
 # Models
 models/
