@@ -1,0 +1,25 @@
+# Ignore data and models - these are mounted via volumes at runtime
+data/
+models/
+shared_channel/
+phase3_out/
+audio/
+
+# Ignore python artifacts
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.pyd
+
+# Ignore git and IDE settings
+.git
+.gitignore
+.vscode
+.idea
+
+# Ignore miscellaneous
+*.log
+.env
+.env.*
+node_modules/
+tests/

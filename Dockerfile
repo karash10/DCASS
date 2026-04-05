@@ -1,7 +1,7 @@
 # Dockerfile for DCASS Steganography System
 # Multi-stage build for optimized image size
 
-FROM python:3.10-slim as base
+FROM python:3.10-slim AS base
 
 # Set working directory
 WORKDIR /app
@@ -15,7 +15,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
-FROM base as dependencies
+FROM base AS dependencies
 
 # Copy requirements
 COPY requirements.txt .
@@ -26,12 +26,13 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 # Install additional RL/GAN dependencies
 RUN pip install --no-cache-dir \
-    torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu \
+    torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cpu \
     gymnasium \
-    tensorboard
+    tensorboard \
+    git+https://github.com/openai/CLIP.git
 
 # Final stage
-FROM dependencies as final
+FROM dependencies AS final
 
 # Copy application code
 COPY . /app

@@ -172,7 +172,7 @@ class ReceiverDaemon:
             print(f"[Receiver] Error parsing {file_path}: {e}")
             return None
 
-    async def watch_directory(self):
+    async def _watch_directory(self):
         """
         Asynchronously watch directory for new files.
 
@@ -240,7 +240,7 @@ class ReceiverDaemon:
         """Run the receiver daemon."""
         print("[Receiver] Starting daemon...")
         try:
-            await self.watch_directory()
+            await self._watch_directory()
         except KeyboardInterrupt:
             print("\n[Receiver] Shutting down...")
         except Exception as e:

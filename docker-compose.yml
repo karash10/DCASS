@@ -1,10 +1,20 @@
 # docker-compose.yml for DCASS Simulation Sandbox
 # Sets up Alice (Sender) and Bob (Receiver) connected via shared volume
+#
+# Quick start:
+#   docker compose up                              # sender (auto) + receiver
+#   docker compose --profile training run dcass-gen-traffic   # generate data
+#   docker compose --profile training run dcass-train-gan     # train GAN
+#   docker compose --profile training run dcass-train-rl      # train RL
+#   docker compose --profile monitoring up tensorboard        # TensorBoard
 
 version: '3.8'
 
 services:
+  # ═══════════════════════════════════════════════════════════════════════
   # Alice: The Sender
+  # Uses StealthScheduler with dynamic→static fallback (auto mode)
+  # ═══════════════════════════════════════════════════════════════════════
   dcass-sender:
     build:
       context: .
@@ -15,23 +25,41 @@ services:
       - PYTHONUNBUFFERED=1
       - DCASS_ROLE=sender
       - DCASS_SHARED_DIR=/app/shared_channel
+      - DCASS_MODE=${DCASS_MODE:-auto}
+      - DCASS_PROFILE=${DCASS_PROFILE:-casual}
+      - DCASS_SEQ_LENGTH=${DCASS_SEQ_LENGTH:-20}
+      - DCASS_BASE_DELAY=${DCASS_BASE_DELAY:-3.0}
       - CUDA_VISIBLE_DEVICES=""  # Force CPU mode
     volumes:
-      - ./shared_channel:/app/shared_channel  # Shared wire simulation
-      - ./data:/app/data
-      - ./checkpoints:/app/checkpoints
+      - ./shared_channel:/app/shared_channel    # Shared wire simulation
+      - ./data:/app/data                        # Corpus data
+      - ./models:/app/models                    # Trained model checkpoints
+      - ./checkpoints:/app/checkpoints          # Legacy checkpoint path
       - ./logs/sender:/app/logs
     networks:
       - dcass-network
-    command: >
+    command: |
       bash -c "
-        echo 'Alice (Sender) starting...' &&
-        python -u scripts/run_sender.py --mode rl --episodes 100
+        echo '══════════════════════════════════════════════════' &&
+        echo '  Alice (Sender) — mode=$${DCASS_MODE}' &&
+        echo '══════════════════════════════════════════════════' &&
+        python -u scripts/run_sender.py \
+          --mode $${DCASS_MODE} \
+          --profile $${DCASS_PROFILE} \
+          --sequence-length $${DCASS_SEQ_LENGTH} \
+          --base-delay $${DCASS_BASE_DELAY} \
+          --shared-dir /app/shared_channel \
+          --rl-checkpoint /app/models/rl/ppo_agent_final.pt \
+          --gan-checkpoint /app/models/gan/final.pt
       "
     depends_on:
-      - dcass-receiver
+      dcass-receiver:
+        condition: service_healthy
 
+  # ═══════════════════════════════════════════════════════════════════════
   # Bob: The Receiver
+  # Watches shared_channel/ for incoming JSON packet metadata
+  # ═══════════════════════════════════════════════════════════════════════
   dcass-receiver:
     build:
       context: .
@@ -44,7 +72,7 @@ services:
       - DCASS_SHARED_DIR=/app/shared_channel
       - CUDA_VISIBLE_DEVICES=""  # Force CPU mode
     volumes:
-      - ./shared_channel:/app/shared_channel  # Shared wire simulation
+      - ./shared_channel:/app/shared_channel    # Shared wire simulation
       - ./data:/app/data
       - ./checkpoints:/app/checkpoints
       - ./logs/receiver:/app/logs
@@ -57,11 +85,81 @@ services:
       "
     healthcheck:
       test: ["CMD", "python", "-c", "import os; exit(0 if os.path.exists('/app/shared_channel') else 1)"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
 
-  # Optional: TensorBoard for monitoring training
+  # ═══════════════════════════════════════════════════════════════════════
+  # Training Services  (profile: training)
+  # Run with:  docker compose --profile training run <service>
+  # ═══════════════════════════════════════════════════════════════════════
+
+  # Step 0: Generate synthetic human traffic data for GAN training
+  dcass-gen-traffic:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dcass-gen-traffic
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./data:/app/data
+    command: >
+      python -u scripts/generate_traffic_data.py
+        --num-sessions 2000
+        --num-channels 3
+        --output /app/data/behavioral/human_traffic.json
+    profiles:
+      - training
+
+  # Step 1: Train the GAN stealth scheduler
+  dcass-train-gan:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dcass-train-gan
+    environment:
+      - PYTHONUNBUFFERED=1
+      - CUDA_VISIBLE_DEVICES=""
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./logs/train-gan:/app/logs
+    command: >
+      python -u scripts/train_gan.py
+        --data /app/data/behavioral/human_traffic.json
+        --epochs ${GAN_EPOCHS:-50}
+        --batch-size 32
+        --checkpoint-dir /app/models/gan
+    profiles:
+      - training
+
+  # Step 2: Train the RL stealth policy agent
+  dcass-train-rl:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dcass-train-rl
+    environment:
+      - PYTHONUNBUFFERED=1
+      - CUDA_VISIBLE_DEVICES=""
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./logs/train-rl:/app/logs
+    command: >
+      python -u scripts/train_rl.py
+        --episodes ${RL_EPISODES:-1000}
+        --num-channels 3
+        --checkpoint-dir /app/models/rl
+        --warden-checkpoint /app/models/gan/final.pt
+    profiles:
+      - training
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # Monitoring  (profile: monitoring)
+  # ═══════════════════════════════════════════════════════════════════════
   tensorboard:
     build:
       context: .

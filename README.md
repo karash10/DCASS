@@ -99,25 +99,44 @@ DCASS is organized into **four logical layers**:
 
 ---
 
+## 📖 Documentation
+
+All documentation lives in the [`document/`](./document/) folder:
+
+| Guide | Description |
+|---|---|
+| [Getting Started](./document/GETTING_STARTED.md) | Install, configure, and run for the first time |
+| [Scripts Reference](./document/SCRIPTS.md) | How to run every script with examples |
+| [Docker Setup](./document/DOCKER_SETUP.md) | Full Docker reference |
+| [Implementation Summary](./document/IMPLEMENTATION_SUMMARY.md) | GAN + RL technical details |
+| [Full Handout](./document/DCASS_Implementation_Handout.md) | Complete module walkthrough |
+
+---
+
 ## 📁 Project Structure
 
 ```text
 dcass/
+├── README.md            # This file
+├── document/            # All documentation
+│   ├── GETTING_STARTED.md
+│   ├── SCRIPTS.md
+│   ├── DOCKER_SETUP.md
+│   └── diagrams/
+│
 ├── src/
 │   ├── corpus/          # Dataset loading, preprocessing, embeddings, FAISS
 │   ├── engine/          # Encoding / decoding logic
 │   ├── stealth/         # GAN scheduler and RL agent
-│   ├── distribution/   # Multi-channel dispatcher
+│   ├── distribution/    # Multi-channel dispatcher
 │   ├── analysis/        # Benchmarks and adversarial testing
 │   └── cli/             # Command-line interface
 │
 ├── data/
 │   ├── raw/
-│   ├── processed/
-│   └── embeddings/
+│   ├── behavioral/      # Synthetic human traffic data
+│   └── indices/         # FAISS vector indices
 │
-├── models/              # Trained GAN and RL models
+├── models/              # Trained GAN and RL checkpoints
 ├── tests/               # Unit, integration, adversarial tests
-├── notebooks/           # Research experiments
-├── docs/                # Architecture & research paper
-└── scripts/             # Utility scripts
+└── scripts/             # Runnable scripts (sender, receiver, training)
