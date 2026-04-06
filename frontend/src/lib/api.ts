@@ -13,7 +13,16 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 30000, // 30 second timeout
+  timeout: 30000, // 30 second default timeout
+});
+
+// Longer timeout for encode/decode operations (model loading on first request)
+const apiLongTimeout = axios.create({
+  baseURL: API_BASE,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  timeout: 90000, // 90 second timeout for heavy operations
 });
 
 // ============================================================================
@@ -95,13 +104,18 @@ export async function healthCheck(): Promise<{ status: string }> {
   return response.data;
 }
 
+export async function checkReady(): Promise<{ ready: boolean; initializing: boolean; encoder_loaded: boolean; decoder_loaded: boolean }> {
+  const response = await api.get('/ready');
+  return response.data;
+}
+
 export async function encodeMessage(request: EncodeRequest): Promise<EncodeResponse> {
-  const response = await api.post('/encode', request);
+  const response = await apiLongTimeout.post('/encode', request);
   return response.data;
 }
 
 export async function decodeSequence(request: DecodeRequest): Promise<DecodeResponse> {
-  const response = await api.post('/decode', request);
+  const response = await apiLongTimeout.post('/decode', request);
   return response.data;
 }
 

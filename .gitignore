@@ -91,8 +91,48 @@ checkpoints/
 *.pth
 *.ckpt
 
+# Docker build cache and artifacts
+.docker/
+docker-compose.override.yml
+*.tar
+*.tar.gz
+
+# Training artifacts
+data/behavioral/
+tensorboard_logs/
+runs/
+
+# Audio files (large)
+*.wav
+*.mp3
+*.flac
+*.ogg
+
+# HuggingFace cache
+.cache/
+huggingface/
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
+
 # Private notes and drafts
 NOTES.md
 TODO_PRIVATE.md
 drafts/
 personal/
+
+# OS-specific
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.lnk
+
+# Editor directories
+.idea/
+.vscode/
+*.sublime-*
+*.code-workspace

@@ -24,6 +24,7 @@ def main():
     parser.add_argument("--host", default="127.0.0.1", help="Host to bind to (default: 127.0.0.1)")
     parser.add_argument("--port", type=int, default=8000, help="Port to bind to (default: 8000)")
     parser.add_argument("--reload", action="store_true", help="Enable auto-reload on code changes")
+    parser.add_argument("--no-warmup", action="store_true", help="Skip model warmup on startup")
     args = parser.parse_args()
 
     print("=" * 70)
@@ -42,6 +43,16 @@ def main():
         print("❌ Error: uvicorn not installed")
         print("Install with: pip install uvicorn")
         sys.exit(1)
+
+    # Pre-warm the engine unless disabled
+    if not args.no_warmup and not args.reload:
+        # Import and call warmup
+        from src.api.server import warmup
+        warmup()
+    elif args.reload:
+        print("⚠️  Warmup skipped (auto-reload enabled)\n")
+    else:
+        print("⚠️  Warmup skipped (--no-warmup flag)\n")
 
     # Start server
     uvicorn.run(

@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Navigation from '@/components/Navigation';
 import { Card, Badge, LoadingSpinner } from '@/components/UI';
-import { encodeMessage, EncodeResponse } from '@/lib/api';
+import { encodeMessage, EncodeResponse, checkReady } from '@/lib/api';
 
 export default function EncodePage() {
   const [message, setMessage] = useState('');
@@ -12,6 +12,45 @@ export default function EncodePage() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<EncodeResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [serverReady, setServerReady] = useState<boolean | null>(null);
+  const [serverInitializing, setServerInitializing] = useState(false);
+
+  // Check if server is ready on mount
+  useEffect(() => {
+    const checkServerStatus = async () => {
+      try {
+        const status = await checkReady();
+        setServerReady(status.ready);
+        setServerInitializing(status.initializing);
+        
+        // Only poll if actively initializing
+        if (status.initializing) {
+          const interval = setInterval(async () => {
+            try {
+              const updatedStatus = await checkReady();
+              setServerReady(updatedStatus.ready);
+              setServerInitializing(updatedStatus.initializing);
+              
+              if (updatedStatus.ready || !updatedStatus.initializing) {
+                clearInterval(interval);
+              }
+            } catch (err) {
+              // Server might not be fully started yet
+              console.log('Waiting for server...');
+            }
+          }, 2000); // Poll every 2 seconds
+          
+          return () => clearInterval(interval);
+        }
+      } catch (err) {
+        console.error('Failed to check server status:', err);
+        // If we can't reach the server, show warning but don't block
+        setServerReady(null);
+      }
+    };
+
+    checkServerStatus();
+  }, []);
 
   const handleEncode = async () => {
     if (!message.trim()) {
@@ -125,12 +164,43 @@ export default function EncodePage() {
                 </div>
               </Card>
 
+              {/* Server Status Indicator */}
+              {serverInitializing && (
+                <div className="bg-yellow-500/20 border border-yellow-500/30 rounded-lg p-4 text-yellow-400">
+                  <div className="flex items-center space-x-3">
+                    <LoadingSpinner />
+                    <div>
+                      <div className="font-semibold">Initializing DCASS Engine...</div>
+                      <div className="text-sm text-yellow-300">Loading CLIP model and indices. This may take 10-30 seconds.</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              {serverReady === false && !serverInitializing && (
+                <div className="bg-yellow-500/20 border border-yellow-500/30 rounded-lg p-4 text-yellow-400">
+                  <div className="font-semibold">⚠️ Models Not Pre-loaded</div>
+                  <div className="text-sm text-yellow-300">
+                    First encoding request will take 10-30 seconds while models load. Subsequent requests will be fast.
+                  </div>
+                </div>
+              )}
+              
+              {serverReady === null && (
+                <div className="bg-error/20 border border-error/30 rounded-lg p-4 text-error">
+                  ❌ Cannot connect to server. Please check if the backend is running on port 8000.
+                </div>
+              )}
+
               <button
                 onClick={handleEncode}
-                disabled={loading || !message.trim()}
+                disabled={loading || !message.trim() || serverReady === null || serverInitializing}
                 className="w-full bg-primary hover:bg-primary/90 disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-semibold py-4 px-6 rounded-lg transition-colors text-lg"
               >
-                {loading ? '🔄 Encoding...' : '🔐 Encode & Generate Sequence'}
+                {loading ? '🔄 Encoding...' : 
+                 serverInitializing ? '⏳ Initializing models...' :
+                 serverReady === null ? '❌ Server offline' :
+                 '🔐 Encode & Generate Sequence'}
               </button>
 
               {error && (

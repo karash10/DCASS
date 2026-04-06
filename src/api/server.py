@@ -43,6 +43,8 @@ app.add_middleware(
 # ---------------------------------------------------------------------------
 _encoder = None
 _decoder = None
+_initializing = False
+_ready = False
 
 
 def _get_encoder():
@@ -61,6 +63,36 @@ def _get_decoder():
         _decoder = SemanticDecoder()
         _decoder.load()
     return _decoder
+
+
+def warmup():
+    """Pre-load encoder and decoder on startup."""
+    global _initializing, _ready
+    _initializing = True
+    print("\n" + "=" * 70)
+    print("🔥 Warming up DCASS engine...")
+    print("=" * 70)
+    try:
+        # Load encoder (this triggers CLIP model loading)
+        print("\n📦 Loading encoder and CLIP model...")
+        encoder = _get_encoder()
+        print(f"✅ Encoder ready: {encoder}")
+        
+        # Load decoder
+        print("\n📦 Loading decoder...")
+        decoder = _get_decoder()
+        print(f"✅ Decoder ready: {decoder}")
+        
+        _ready = True
+        print("\n" + "=" * 70)
+        print("✅ DCASS engine ready!")
+        print("=" * 70 + "\n")
+    except Exception as e:
+        print(f"\n❌ Warmup failed: {e}")
+        print("=" * 70 + "\n")
+        _ready = False
+    finally:
+        _initializing = False
 
 
 # ---------------------------------------------------------------------------
@@ -224,6 +256,17 @@ def status():
         device="cuda" if torch.cuda.is_available() else "cpu",
         stealth_models=stealth,
     )
+
+
+@app.get("/api/ready")
+def ready():
+    """Check if the server is ready to process requests."""
+    return {
+        "ready": _ready,
+        "initializing": _initializing,
+        "encoder_loaded": _encoder is not None,
+        "decoder_loaded": _decoder is not None,
+    }
 
 
 @app.get("/api/benchmark/latest")
