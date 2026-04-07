@@ -59,19 +59,19 @@ clean:
 
 # Download datasets
 download-data:
-	python scripts/download_flickr8k.py
+	python scripts/data/download_flickr8k.py
 
 # Build FAISS indices
 build-index:
-	python scripts/build_indices.py
+	python scripts/data/build_indices.py
 
 # Build only image index
 build-image-index:
-	python scripts/build_indices.py --modality image
+	python scripts/data/build_indices.py --modality image
 
 # Build only text index
 build-text-index:
-	python scripts/build_indices.py --modality text
+	python scripts/data/build_indices.py --modality text
 
 # Run CLI
 run:
@@ -109,10 +109,10 @@ docker-train:
 
 # Full end-to-end pipeline: gen → train → send
 docker-pipeline:
-	python scripts/docker_orchestrate.py --full-pipeline
+	python scripts/utils/docker_orchestrate.py --full-pipeline
 
 # Stop and remove all containers
 docker-clean:
 	docker compose down --remove-orphans
 	@echo "Cleaning shared_channel..."
-	rm -rf shared_channel/*.json 2>/dev/null || true
+	rm -rf storage/shared_channel/*.json 2>/dev/null || true

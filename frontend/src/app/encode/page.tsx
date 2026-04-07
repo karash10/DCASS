@@ -1,15 +1,21 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import Navigation from '@/components/Navigation';
 import { Card, Badge, LoadingSpinner } from '@/components/UI';
 import { encodeMessage, EncodeResponse, checkReady } from '@/lib/api';
+import axios from 'axios';
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 export default function EncodePage() {
+  const router = useRouter();
   const [message, setMessage] = useState('');
   const [mode, setMode] = useState<'best' | 'round_robin' | 'balanced'>('best');
   const [modalities, setModalities] = useState(['image', 'text']);
   const [loading, setLoading] = useState(false);
+  const [transmitting, setTransmitting] = useState(false);
   const [result, setResult] = useState<EncodeResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [serverReady, setServerReady] = useState<boolean | null>(null);
@@ -85,6 +91,37 @@ export default function EncodePage() {
       }
     } else {
       setModalities([...modalities, mod]);
+    }
+  };
+
+  const handleTransmit = async () => {
+    if (!result) return;
+
+    try {
+      setTransmitting(true);
+      setError(null);
+
+      // Clear existing packets first
+      await axios.delete(`${API_BASE}/api/wire/packets`);
+
+      // Transmit the sequence with real-time delays
+      // speed_multiplier: 1.0 = real-time, 2.0 = 2x faster, etc.
+      await axios.post(`${API_BASE}/api/transmit`, {
+        media_ids: result.media_ids,
+        mode: 'static',
+        base_delay: 1.5,  // Shorter delays for demo
+        num_channels: 3,
+        message: message,
+        speed_multiplier: 2.0,  // 2x speed for faster demo
+      });
+
+      // Navigate to wire view immediately (packets will appear over time)
+      router.push('/wire');
+    } catch (err: any) {
+      console.error('Transmission error:', err);
+      setError(err.response?.data?.detail || err.message || 'Transmission failed');
+    } finally {
+      setTransmitting(false);
     }
   };
 
@@ -202,6 +239,16 @@ export default function EncodePage() {
                  serverReady === null ? '❌ Server offline' :
                  '🔐 Encode & Generate Sequence'}
               </button>
+
+              {result && !loading && (
+                <button
+                  onClick={handleTransmit}
+                  disabled={transmitting}
+                  className="w-full bg-success hover:bg-success/90 disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-semibold py-4 px-6 rounded-lg transition-colors text-lg"
+                >
+                  {transmitting ? '📡 Transmitting...' : '📡 Transmit on Wire View'}
+                </button>
+              )}
 
               {error && (
                 <div className="bg-error/20 border border-error/30 rounded-lg p-4 text-error">

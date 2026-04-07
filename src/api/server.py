@@ -13,10 +13,12 @@ from __future__ import annotations
 
 import time
 import json
+import asyncio
+import threading
 from pathlib import Path
 from typing import Optional, Literal
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -45,6 +47,11 @@ _encoder = None
 _decoder = None
 _initializing = False
 _ready = False
+
+# Transmission state
+_transmission_active = False
+_transmission_progress = {"current": 0, "total": 0, "status": "idle"}
+_transmission_lock = threading.Lock()
 
 
 def _get_encoder():
@@ -225,8 +232,8 @@ def search(req: SearchRequest):
 @app.get("/api/status", response_model=StatusResponse)
 def status():
     import torch
-    indices_path = Path(__file__).parent.parent.parent / "data" / "indices"
-    models_path = Path(__file__).parent.parent.parent / "models"
+    indices_path = Path(__file__).parent.parent.parent / "storage" / "data" / "indices"
+    models_path = Path(__file__).parent.parent.parent / "storage" / "models"
 
     index_info = {}
     total = 0
@@ -261,8 +268,10 @@ def status():
 @app.get("/api/ready")
 def ready():
     """Check if the server is ready to process requests."""
+    # Consider ready if both encoder and decoder are loaded (even without warmup)
+    is_ready = _ready or (_encoder is not None and _decoder is not None)
     return {
-        "ready": _ready,
+        "ready": is_ready,
         "initializing": _initializing,
         "encoder_loaded": _encoder is not None,
         "decoder_loaded": _decoder is not None,
@@ -271,7 +280,7 @@ def ready():
 
 @app.get("/api/benchmark/latest")
 def benchmark_latest():
-    results_dir = Path(__file__).parent.parent.parent / "data" / "benchmarks" / "results"
+    results_dir = Path(__file__).parent.parent.parent / "storage" / "data" / "benchmarks" / "results"
     if not results_dir.exists():
         return {"available": False}
 
@@ -283,3 +292,231 @@ def benchmark_latest():
         data = json.load(f)
 
     return {"available": True, "filename": files[0].name, "data": data}
+
+
+@app.get("/api/wire/packets")
+def get_wire_packets():
+    """List all packets in shared_channel directory."""
+    shared_dir = Path(__file__).parent.parent.parent / "storage" / "shared_channel"
+    
+    if not shared_dir.exists():
+        return {"packets": [], "count": 0, "error": "shared_channel directory not found"}
+    
+    packets = []
+    try:
+        for f in sorted(shared_dir.glob("*.json")):
+            # Skip manifest file
+            if f.name.startswith("_"):
+                continue
+                
+            try:
+                with open(f, "r", encoding="utf-8") as fp:
+                    data = json.load(fp)
+                    data["filename"] = f.name
+                    packets.append(data)
+            except Exception as e:
+                print(f"Error reading {f}: {e}")
+                continue
+    except Exception as e:
+        return {"packets": [], "count": 0, "error": str(e)}
+    
+    return {"packets": packets, "count": len(packets)}
+
+
+@app.delete("/api/wire/packets")
+def clear_wire_packets():
+    """Clear all packets from shared_channel directory."""
+    shared_dir = Path(__file__).parent.parent.parent / "storage" / "shared_channel"
+    
+    if not shared_dir.exists():
+        return {"success": False, "error": "shared_channel directory not found"}
+    
+    deleted_count = 0
+    try:
+        for f in shared_dir.glob("*.json"):
+            f.unlink()
+            deleted_count += 1
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+    
+    return {"success": True, "deleted": deleted_count}
+
+
+class TransmitRequest(BaseModel):
+    media_ids: list[str]
+    mode: Literal["static", "rl", "gan", "auto"] = "static"
+    base_delay: float = 1.0  # Reduced default for faster demo
+    num_channels: int = 3
+    message: str = ""
+    speed_multiplier: float = 1.0  # 1.0 = real-time, 2.0 = 2x faster, etc.
+
+
+def _transmit_packets_sync(
+    schedule: dict,
+    shared_dir: Path,
+    message: str,
+    speed_multiplier: float = 1.0,
+):
+    """
+    Synchronous function to transmit packets with real delays.
+    Runs in a background thread.
+    """
+    global _transmission_active, _transmission_progress
+    
+    items = schedule["items"]
+    delays = schedule["delays"]
+    channels = schedule["channels"]
+    mode_used = schedule["mode_used"]
+    
+    with _transmission_lock:
+        _transmission_active = True
+        _transmission_progress = {
+            "current": 0,
+            "total": len([i for i in items if i is not None]),
+            "status": "transmitting",
+        }
+    
+    try:
+        # Write manifest
+        manifest = {
+            "message": message,
+            "mode_requested": schedule.get("mode_requested", mode_used),
+            "mode_used": mode_used,
+            "total_items": len(items),
+            "total_delay_seconds": round(sum(delays), 2),
+            "timestamp": time.time(),
+        }
+        with open(shared_dir / "_manifest.json", "w") as f:
+            json.dump(manifest, f, indent=2)
+        
+        # Transmit packets with real delays
+        packet_count = 0
+        for idx, (media_id, delay, channel) in enumerate(zip(items, delays, channels)):
+            if media_id is None:
+                # Noise gap - just wait
+                actual_delay = delay / speed_multiplier
+                if actual_delay > 0:
+                    time.sleep(actual_delay)
+                continue
+            
+            # Write packet
+            packet = {
+                "media_id": media_id,
+                "channel_id": channel,
+                "sequence_number": idx,
+                "delay_seconds": round(delay, 3),
+                "timestamp": time.time(),
+                "mode_used": mode_used,
+            }
+            
+            filename = f"{media_id}_{channel}_{idx:04d}.json"
+            with open(shared_dir / filename, "w") as f:
+                json.dump(packet, f, indent=2)
+            
+            packet_count += 1
+            
+            # Update progress
+            with _transmission_lock:
+                _transmission_progress["current"] = packet_count
+            
+            # Apply delay before next packet (scaled by speed_multiplier)
+            actual_delay = delay / speed_multiplier
+            if actual_delay > 0 and idx < len(items) - 1:
+                time.sleep(actual_delay)
+        
+        # Mark as complete
+        with _transmission_lock:
+            _transmission_progress["status"] = "complete"
+            _transmission_active = False
+            
+    except Exception as e:
+        with _transmission_lock:
+            _transmission_progress["status"] = f"error: {str(e)}"
+            _transmission_active = False
+        raise
+
+
+@app.post("/api/transmit")
+def transmit_sequence(req: TransmitRequest, background_tasks: BackgroundTasks):
+    """
+    Start transmitting a media sequence through the shared channel.
+    
+    This starts a background task that writes packets with real delays,
+    simulating realistic transmission timing.
+    """
+    global _transmission_active, _transmission_progress
+    
+    # Check if already transmitting
+    if _transmission_active:
+        raise HTTPException(
+            status_code=409,
+            detail="Transmission already in progress. Wait for it to complete or check /api/transmit/status"
+        )
+    
+    try:
+        from src.stealth.stealth_scheduler import StealthScheduler
+        
+        # Initialize scheduler
+        scheduler = StealthScheduler(
+            num_channels=req.num_channels,
+            device="cpu",
+            profile="casual",
+        )
+        
+        # Get schedule
+        schedule = scheduler.schedule(
+            media_ids=req.media_ids,
+            mode=req.mode,
+            base_delay=req.base_delay,
+        )
+        
+        # Prepare shared_channel directory
+        shared_dir = Path(__file__).parent.parent.parent / "storage" / "shared_channel"
+        shared_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Calculate estimated time
+        total_delay = sum(schedule["delays"]) / req.speed_multiplier
+        
+        # Start background transmission in a thread
+        thread = threading.Thread(
+            target=_transmit_packets_sync,
+            args=(schedule, shared_dir, req.message, req.speed_multiplier),
+            daemon=True,
+        )
+        thread.start()
+        
+        return {
+            "success": True,
+            "status": "started",
+            "total_packets": len([i for i in schedule["items"] if i is not None]),
+            "mode_used": schedule["mode_used"],
+            "estimated_duration_seconds": round(total_delay, 2),
+            "speed_multiplier": req.speed_multiplier,
+            "message": "Transmission started in background. Poll /api/transmit/status for progress.",
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/transmit/status")
+def get_transmission_status():
+    """Get the current transmission status."""
+    return {
+        "active": _transmission_active,
+        **_transmission_progress,
+    }
+
+
+@app.post("/api/transmit/stop")
+def stop_transmission():
+    """Stop the current transmission (best effort)."""
+    global _transmission_active, _transmission_progress
+    
+    with _transmission_lock:
+        if _transmission_active:
+            _transmission_active = False
+            _transmission_progress["status"] = "stopped"
+            return {"success": True, "message": "Transmission stop requested"}
+        else:
+            return {"success": False, "message": "No active transmission"}

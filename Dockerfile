@@ -84,7 +84,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean
 
 # Create necessary directories with proper permissions
-RUN mkdir -p /app/data /app/models /app/checkpoints /app/logs /app/shared_channel \
+RUN mkdir -p /app/storage/data /app/storage/models /app/storage/checkpoints /app/storage/logs /app/storage/shared_channel \
     && chmod -R 755 /app
 
 # Copy application code

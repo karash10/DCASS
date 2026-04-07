@@ -143,8 +143,8 @@ class UnifiedSemanticIndex:
             enabled_modalities: List of modalities to load. Defaults to all available.
         """
         if base_path is None:
-            # Default: project_root/data/indices/
-            base_path = Path(__file__).parent.parent.parent.parent / "data" / "indices"
+            # Default: project_root/storage/data/indices/
+            base_path = Path(__file__).parent.parent.parent.parent / "storage" / "data" / "indices"
         
         self.base_path = Path(base_path)
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")

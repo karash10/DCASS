@@ -5,6 +5,8 @@ import Navigation from '@/components/Navigation';
 import { Card, Badge } from '@/components/UI';
 import axios from 'axios';
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
 interface Packet {
   media_id: string;
   channel_id: number;
@@ -15,9 +17,22 @@ interface Packet {
   filename: string;
 }
 
+interface TransmissionStatus {
+  active: boolean;
+  current: number;
+  total: number;
+  status: string;
+}
+
 export default function WirePage() {
   const [packets, setPackets] = useState<Packet[]>([]);
-  const [isMonitoring, setIsMonitoring] = useState(false);
+  const [isMonitoring, setIsMonitoring] = useState(true); // Start monitoring by default
+  const [transmissionStatus, setTransmissionStatus] = useState<TransmissionStatus>({
+    active: false,
+    current: 0,
+    total: 0,
+    status: 'idle',
+  });
   const [stats, setStats] = useState({
     totalPackets: 0,
     avgDelay: 0,
@@ -26,25 +41,29 @@ export default function WirePage() {
   });
 
   useEffect(() => {
-    // Poll shared_channel directory for packets
-    const pollPackets = async () => {
+    // Poll shared_channel directory for packets and transmission status
+    const pollData = async () => {
       try {
-        // This is a mock - in production, you'd set up a proper file watcher
-        // or WebSocket connection. For now, we'll show example functionality.
+        // Poll packets
+        const packetsResponse = await axios.get(`${API_BASE}/api/wire/packets`);
+        if (packetsResponse.data.packets) {
+          setPackets(packetsResponse.data.packets);
+        }
         
-        // We can't directly access file system from browser, so this would need
-        // a backend API endpoint that lists files in shared_channel/
-        
-        // For demonstration, we'll use a mock data approach
-        console.log('Monitoring shared_channel...');
+        // Poll transmission status
+        const statusResponse = await axios.get(`${API_BASE}/api/transmit/status`);
+        setTransmissionStatus(statusResponse.data);
       } catch (err) {
-        console.error('Error polling packets:', err);
+        console.error('Error polling data:', err);
       }
     };
 
     let interval: NodeJS.Timeout;
     if (isMonitoring) {
-      interval = setInterval(pollPackets, 1000);
+      // Poll immediately when monitoring starts
+      pollData();
+      // Then poll every 500ms for more responsive updates
+      interval = setInterval(pollData, 500);
     }
 
     return () => {
@@ -77,8 +96,13 @@ export default function WirePage() {
     }
   };
 
-  const clearPackets = () => {
-    setPackets([]);
+  const clearPackets = async () => {
+    try {
+      await axios.delete(`${API_BASE}/api/wire/packets`);
+      setPackets([]);
+    } catch (err) {
+      console.error('Error clearing packets:', err);
+    }
   };
 
   return (
@@ -104,6 +128,31 @@ export default function WirePage() {
               </button>
             </div>
           </div>
+
+          {/* Transmission Progress Banner */}
+          {transmissionStatus.active && (
+            <div className="bg-primary/20 border border-primary/30 rounded-lg p-4 mb-6">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-primary font-semibold flex items-center">
+                  <span className="animate-pulse mr-2">📡</span>
+                  Transmission in Progress
+                </span>
+                <span className="text-white">
+                  {transmissionStatus.current} / {transmissionStatus.total} packets
+                </span>
+              </div>
+              <div className="w-full bg-gray-700 rounded-full h-2">
+                <div
+                  className="bg-primary h-2 rounded-full transition-all duration-300"
+                  style={{
+                    width: `${transmissionStatus.total > 0 
+                      ? (transmissionStatus.current / transmissionStatus.total) * 100 
+                      : 0}%`
+                  }}
+                />
+              </div>
+            </div>
+          )}
 
           {/* Statistics */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
@@ -139,6 +188,11 @@ export default function WirePage() {
                   <span className="flex items-center">
                     <span className="animate-pulse mr-2">🔴</span>
                     Monitoring shared_channel/
+                    {transmissionStatus.active && (
+                      <span className="ml-2 text-primary">
+                        (Live transmission: {transmissionStatus.current}/{transmissionStatus.total})
+                      </span>
+                    )}
                   </span>
                 ) : (
                   <span className="text-gray-500">Monitoring paused</span>

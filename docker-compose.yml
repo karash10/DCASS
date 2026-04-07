@@ -4,6 +4,7 @@
 # Quick start:
 #   docker compose up                                    # sender + receiver (production)
 #   docker compose up --build                            # rebuild and start
+#   docker compose --profile web up                      # web UI (frontend + backend API)
 #   docker compose --profile training run dcass-gen-traffic   # generate data
 #   docker compose --profile training run dcass-train-gan     # train GAN
 #   docker compose --profile training run dcass-train-rl      # train RL
@@ -24,9 +25,9 @@ x-common-env: &common-env
   PYTORCH_CUDA_ALLOC_CONF: "garbage_collection_threshold:0.6"
 
 x-common-volumes: &common-volumes
-  - ./shared_channel:/app/shared_channel:rw
-  - ./data:/app/data:ro
-  - ./models:/app/models:rw
+  - ./storage/shared_channel:/app/shared_channel:rw
+  - ./storage/data:/app/data:ro
+  - ./storage/models:/app/models:rw
 
 x-resource-limits: &resource-limits
   deploy:
@@ -66,15 +67,15 @@ services:
       DCASS_SEQ_LENGTH: ${DCASS_SEQ_LENGTH:-20}
       DCASS_BASE_DELAY: ${DCASS_BASE_DELAY:-3.0}
     volumes:
-      - ./shared_channel:/app/shared_channel:rw
-      - ./data:/app/data:ro
-      - ./models:/app/models:ro
-      - ./logs/sender:/app/logs:rw
+      - ./storage/shared_channel:/app/shared_channel:rw
+      - ./storage/data:/app/data:ro
+      - ./storage/models:/app/models:ro
+      - ./storage/logs/sender:/app/logs:rw
     networks:
       - dcass-network
     <<: *resource-limits
     command: >
-      python -u scripts/run_sender.py
+      python -u scripts/runtime/run_sender.py
         --mode $${DCASS_MODE}
         --profile $${DCASS_PROFILE}
         --sequence-length $${DCASS_SEQ_LENGTH}
@@ -106,14 +107,14 @@ services:
       DCASS_ROLE: receiver
       DCASS_SHARED_DIR: /app/shared_channel
     volumes:
-      - ./shared_channel:/app/shared_channel:rw
-      - ./data:/app/data:ro
-      - ./logs/receiver:/app/logs:rw
+      - ./storage/shared_channel:/app/shared_channel:rw
+      - ./storage/data:/app/data:ro
+      - ./storage/logs/receiver:/app/logs:rw
     networks:
       - dcass-network
     <<: *resource-limits
     command: >
-      python -u scripts/run_receiver.py
+      python -u scripts/runtime/run_receiver.py
         --watch /app/shared_channel
         --timeout ${RECEIVER_TIMEOUT:-10}
     healthcheck:
@@ -140,9 +141,9 @@ services:
     environment:
       <<: *common-env
     volumes:
-      - ./data:/app/data:rw
+      - ./storage/data:/app/data:rw
     command: >
-      python -u scripts/generate_traffic_data.py
+      python -u scripts/training/generate_traffic_data.py
         --num-sessions ${TRAFFIC_SESSIONS:-2000}
         --num-channels ${NUM_CHANNELS:-3}
         --output /app/data/behavioral/human_traffic.json
@@ -165,11 +166,11 @@ services:
     environment:
       <<: *common-env
     volumes:
-      - ./data:/app/data:ro
-      - ./models:/app/models:rw
-      - ./logs/train-gan:/app/logs:rw
+      - ./storage/data:/app/data:ro
+      - ./storage/models:/app/models:rw
+      - ./storage/logs/train-gan:/app/logs:rw
     command: >
-      python -u scripts/train_gan.py
+      python -u scripts/training/train_gan.py
         --data /app/data/behavioral/human_traffic.json
         --epochs ${GAN_EPOCHS:-50}
         --batch-size ${GAN_BATCH_SIZE:-32}
@@ -196,11 +197,11 @@ services:
     environment:
       <<: *common-env
     volumes:
-      - ./data:/app/data:ro
-      - ./models:/app/models:rw
-      - ./logs/train-rl:/app/logs:rw
+      - ./storage/data:/app/data:ro
+      - ./storage/models:/app/models:rw
+      - ./storage/logs/train-rl:/app/logs:rw
     command: >
-      python -u scripts/train_rl.py
+      python -u scripts/training/train_rl.py
         --episodes ${RL_EPISODES:-1000}
         --num-channels ${NUM_CHANNELS:-3}
         --checkpoint-dir /app/models/rl
@@ -226,7 +227,7 @@ services:
     ports:
       - "${TENSORBOARD_PORT:-6006}:6006"
     volumes:
-      - ./logs:/logs:ro
+      - ./storage/logs:/logs:ro
     networks:
       - dcass-network
     command: tensorboard --logdir /logs --host 0.0.0.0 --port 6006 --bind_all
@@ -237,6 +238,76 @@ services:
         limits:
           memory: 512M
           cpus: '0.5'
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Web Services (profile: web)
+  # Run with: docker compose --profile web up
+  # ─────────────────────────────────────────────────────────────────────────
+  
+  # Backend API Server
+  dcass-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    image: dcass:api
+    container_name: dcass-api
+    hostname: api
+    environment:
+      <<: *common-env
+      DCASS_ROLE: api
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      - ./storage/shared_channel:/app/storage/shared_channel:rw
+      - ./storage/data:/app/storage/data:ro
+      - ./storage/models:/app/storage/models:ro
+    networks:
+      - dcass-network
+    command: >
+      python -m uvicorn src.api.server:app 
+        --host 0.0.0.0 
+        --port 8000
+    profiles:
+      - web
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+          cpus: '2.0'
+    restart: unless-stopped
+
+  # Frontend (Next.js)
+  dcass-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: dcass:frontend
+    container_name: dcass-frontend
+    hostname: frontend
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://dcass-api:8000
+    networks:
+      - dcass-network
+    depends_on:
+      dcass-api:
+        condition: service_healthy
+    profiles:
+      - web
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
     restart: unless-stopped
 
 # ============================================================================
