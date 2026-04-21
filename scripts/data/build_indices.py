@@ -33,6 +33,29 @@ sys.path.insert(0, str(PROJECT_ROOT))
 import numpy as np
 
 
+def _save_faiss_index(embeddings: np.ndarray, metadata, index_path: Path, metadata_path: Path) -> None:
+    """Write embeddings to a FAISS IndexFlatIP and metadata to JSON (cosine sim on normalized vectors)."""
+    import faiss
+
+    embeddings = np.ascontiguousarray(embeddings.astype(np.float32))
+    faiss.normalize_L2(embeddings)
+
+    for i, m in enumerate(metadata):
+        m["index"] = i
+
+    dim = embeddings.shape[1]
+    index = faiss.IndexFlatIP(dim)
+    index.add(embeddings)
+
+    index_path.parent.mkdir(parents=True, exist_ok=True)
+    faiss.write_index(index, str(index_path))
+    with open(metadata_path, "w", encoding="utf-8") as f:
+        json.dump(metadata, f, indent=2)
+
+    print(f"  Wrote {index.ntotal} vectors ({dim}d) to {index_path}")
+    print(f"  Wrote metadata to {metadata_path}")
+
+
 def build_image_index(
     data_dir: Path,
     output_dir: Path,
@@ -53,8 +76,7 @@ def build_image_index(
     """
     from src.corpus.loaders.flickr_loader import FlickrLoader
     from src.corpus.embedders.image_embedder import ImageEmbedder
-    from src.corpus.index.unified_index import ModalityIndex
-    
+
     print("\n" + "=" * 60)
     print("Building Image Index (CLIP embeddings)")
     print("=" * 60)
@@ -130,15 +152,13 @@ def build_image_index(
     # Build index
     print("\nBuilding FAISS index...")
     output_dir = Path(output_dir)
-    index = ModalityIndex(
-        modality="image",
-        index_path=output_dir / "image.index",
-        metadata_path=output_dir / "image_metadata.json"
+    _save_faiss_index(
+        embeddings_array,
+        all_metadata,
+        output_dir / "image.index",
+        output_dir / "image_metadata.json",
     )
-    
-    index.build(embeddings_array, all_metadata)
-    index.save()
-    
+
     print(f"\nImage index saved to {output_dir}")
     return True
 
@@ -169,32 +189,64 @@ def build_text_index(
     """
     from src.corpus.loaders.flickr_loader import FlickrLoader
     from src.corpus.embedders.image_embedder import ImageEmbedder  # CLIP can encode text too!
-    from src.corpus.index.unified_index import ModalityIndex
     
     print("\n" + "=" * 60)
     print("Building Text Index (CLIP embeddings)")
     print("=" * 60)
     
     all_texts = []
-    
-    # Load Flickr captions
-    print(f"\nLoading Flickr captions from {data_dir}...")
-    loader = FlickrLoader(data_dir)
-    items = list(loader.load())
-    
-    if items:
-        for item in items:
-            for i, caption in enumerate(item.get("captions", [])):
-                if caption.strip():
+
+    # Try Flickr30k CSV parser first (Captions.csv / results.csv / flickr_annotations_30k.csv).
+    # FlickrLoader was built for the Flickr8k token-file format and doesn't
+    # understand the Kaggle/HuggingFace Flickr30k CSVs, so we fall through.
+    flickr30k_loaded = False
+    try:
+        sys.path.insert(0, str(Path(__file__).parent))
+        from build_flickr30k_index import find_flickr30k_files, load_flickr30k_captions  # type: ignore
+
+        _, captions_file = find_flickr30k_files(Path(data_dir))
+        if captions_file is not None:
+            print(f"\nDetected Flickr30k-style captions at {captions_file}")
+            f30k_captions = load_flickr30k_captions(captions_file)
+            for image_name, caps in f30k_captions.items():
+                image_id = f"flickr30k_{Path(image_name).stem}"
+                for i, caption in enumerate(caps):
+                    caption = caption.strip()
+                    if not caption:
+                        continue
                     all_texts.append({
-                        "id": f"{item['id']}_cap{i}",
-                        "text": caption.strip(),
-                        "content": caption.strip(),
-                        "source": "flickr8k",
-                        "image_id": item["id"],
-                        "modality": "text"
+                        "id": f"{image_id}_cap{i}",
+                        "text": caption,
+                        "content": caption,
+                        "source": "flickr30k",
+                        "image_id": image_id,
+                        "modality": "text",
                     })
-        print(f"  Loaded {len(all_texts)} Flickr captions")
+            if all_texts:
+                print(f"  Loaded {len(all_texts)} Flickr30k captions")
+                flickr30k_loaded = True
+    except Exception as e:
+        print(f"  (Flickr30k parser unavailable: {e}) — falling back to FlickrLoader")
+
+    # Fall back to Flickr8k-style loader
+    if not flickr30k_loaded:
+        print(f"\nLoading Flickr captions from {data_dir}...")
+        loader = FlickrLoader(data_dir)
+        items = list(loader.load())
+
+        if items:
+            for item in items:
+                for i, caption in enumerate(item.get("captions", [])):
+                    if caption.strip():
+                        all_texts.append({
+                            "id": f"{item['id']}_cap{i}",
+                            "text": caption.strip(),
+                            "content": caption.strip(),
+                            "source": "flickr8k",
+                            "image_id": item["id"],
+                            "modality": "text"
+                        })
+            print(f"  Loaded {len(all_texts)} Flickr captions")
     
     # Load Wikipedia sentences if requested
     if include_wikipedia:
@@ -275,14 +327,12 @@ def build_text_index(
     # Build index
     print("\nBuilding FAISS index...")
     output_dir = Path(output_dir)
-    index = ModalityIndex(
-        modality="text",
-        index_path=output_dir / "text.index",
-        metadata_path=output_dir / "text_metadata.json"
+    _save_faiss_index(
+        embeddings_array,
+        all_metadata,
+        output_dir / "text.index",
+        output_dir / "text_metadata.json",
     )
-    
-    index.build(embeddings_array, all_metadata)
-    index.save()
     
     # Print source breakdown
     sources = {}

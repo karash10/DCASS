@@ -283,8 +283,20 @@ class UnifiedSemanticIndex:
                 if normalized < min_score:
                     continue
                 
-                # Determine content field
-                content = meta.get("content") or meta.get("text") or meta.get("path", "")
+                # Determine content field — prefer human-readable caption/text
+                # over file paths or bare IDs (legacy flickr8k metadata stored
+                # the image path in `content`, which polluted decoded output).
+                caption_first = ""
+                captions_list = meta.get("captions")
+                if isinstance(captions_list, list) and captions_list:
+                    caption_first = str(captions_list[0]).strip()
+                content = (
+                    meta.get("caption")
+                    or caption_first
+                    or meta.get("text")
+                    or meta.get("content")
+                    or meta.get("path", "")
+                )
                 
                 item = MediaItem(
                     id=meta.get("id", f"{modality}_{idx}"),

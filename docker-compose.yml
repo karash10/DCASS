@@ -11,8 +11,6 @@
 #   docker compose --profile monitoring up tensorboard        # TensorBoard
 #   docker compose down -v                               # cleanup volumes
 
-version: '3.8'
-
 # ============================================================================
 # Shared configuration (reusable YAML anchors)
 # ============================================================================
@@ -45,7 +43,9 @@ x-resource-limits: &resource-limits
 services:
   # ─────────────────────────────────────────────────────────────────────────
   # Alice: The Sender
-  # Uses StealthScheduler with dynamic→static fallback (auto mode)
+  # Review demo uses the static NoiseController (no model checkpoints
+  # required). Override with `DCASS_MODE=gan|rl|auto` once checkpoints are
+  # trained (see docker-compose profile `training`).
   # ─────────────────────────────────────────────────────────────────────────
   dcass-sender:
     build:
@@ -62,31 +62,31 @@ services:
       <<: *common-env
       DCASS_ROLE: sender
       DCASS_SHARED_DIR: /app/shared_channel
-      DCASS_MODE: ${DCASS_MODE:-auto}
+      DCASS_MODE: ${DCASS_MODE:-static}
       DCASS_PROFILE: ${DCASS_PROFILE:-casual}
       DCASS_SEQ_LENGTH: ${DCASS_SEQ_LENGTH:-20}
       DCASS_BASE_DELAY: ${DCASS_BASE_DELAY:-3.0}
+      DCASS_MESSAGE: ${DCASS_MESSAGE:-Meet at the cafe at noon}
     volumes:
       - ./storage/shared_channel:/app/shared_channel:rw
-      - ./storage/data:/app/data:ro
-      - ./storage/models:/app/models:ro
+      - ./storage/data:/app/storage/data:ro
+      - ./storage/models:/app/storage/models:ro
       - ./storage/logs/sender:/app/logs:rw
     networks:
       - dcass-network
     <<: *resource-limits
     command: >
       python -u scripts/runtime/run_sender.py
-        --mode $${DCASS_MODE}
-        --profile $${DCASS_PROFILE}
-        --sequence-length $${DCASS_SEQ_LENGTH}
-        --base-delay $${DCASS_BASE_DELAY}
+        --mode ${DCASS_MODE:-static}
+        --profile ${DCASS_PROFILE:-casual}
+        --sequence-length ${DCASS_SEQ_LENGTH:-20}
+        --base-delay ${DCASS_BASE_DELAY:-3.0}
+        --message "${DCASS_MESSAGE:-Meet at the cafe at noon}"
         --shared-dir /app/shared_channel
-        --rl-checkpoint /app/models/rl/ppo_agent_final.pt
-        --gan-checkpoint /app/models/gan/final.pt
     depends_on:
       dcass-receiver:
         condition: service_healthy
-    restart: unless-stopped
+    restart: "no"
 
   # ─────────────────────────────────────────────────────────────────────────
   # Bob: The Receiver
@@ -108,7 +108,7 @@ services:
       DCASS_SHARED_DIR: /app/shared_channel
     volumes:
       - ./storage/shared_channel:/app/shared_channel:rw
-      - ./storage/data:/app/data:ro
+      - ./storage/data:/app/storage/data:ro
       - ./storage/logs/receiver:/app/logs:rw
     networks:
       - dcass-network
@@ -117,13 +117,14 @@ services:
       python -u scripts/runtime/run_receiver.py
         --watch /app/shared_channel
         --timeout ${RECEIVER_TIMEOUT:-10}
+        --exit-after-decode
     healthcheck:
       test: ["CMD", "python", "-c", "import os; exit(0 if os.path.exists('/app/shared_channel') else 1)"]
       interval: 5s
       timeout: 3s
       retries: 3
       start_period: 3s
-    restart: unless-stopped
+    restart: "no"
 
   # ─────────────────────────────────────────────────────────────────────────
   # Training Services (profile: training)

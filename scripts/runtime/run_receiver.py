@@ -100,7 +100,9 @@ class ReceiverDaemon:
         watch_directory: Path,
         silence_threshold: float = 10.0,
         poll_interval: float = 1.0,
-        decoder: Optional[SemanticDecoder] = None
+        decoder: Optional[SemanticDecoder] = None,
+        decode_enabled: bool = True,
+        exit_after_decode: bool = False,
     ):
         """
         Initialize receiver daemon.
@@ -110,6 +112,9 @@ class ReceiverDaemon:
             silence_threshold: Seconds of silence before reassembly
             poll_interval: Seconds between directory polls
             decoder: Pre-initialized SemanticDecoder (created if None)
+            decode_enabled: If True, load SemanticDecoder and decode on
+                reassembly. Disable for packet-only sniff tests when the
+                FAISS indices are not available in this container.
         """
         self.watch_directory = Path(watch_directory)
         self.watch_directory.mkdir(parents=True, exist_ok=True)
@@ -120,6 +125,9 @@ class ReceiverDaemon:
         # Decoder
         self._decoder = decoder
         self._decoder_loaded = False
+        self._decode_enabled = decode_enabled
+        self._exit_after_decode = exit_after_decode
+        self._done = False
 
         # Tracking
         self.processed_files: set[str] = set()
@@ -128,17 +136,17 @@ class ReceiverDaemon:
         print(f"[Receiver] Initialized")
         print(f"  Watch directory: {self.watch_directory}")
         print(f"  Silence threshold: {silence_threshold}s")
+        print(f"  Decoding:          {'enabled' if decode_enabled else 'disabled (sniff-only)'}")
 
     @property
     def decoder(self) -> SemanticDecoder:
         """Get decoder (lazy initialization)."""
         if self._decoder is None:
-            print("[Receiver] Loading SemanticDecoder...")
+            print("[Receiver] Loading SemanticDecoder (this may take a few seconds)...")
             self._decoder = SemanticDecoder()
-            # Note: In production, load the actual indices
-            # For simulation, we might skip loading or use mock indices
-            # self._decoder.load()
+            self._decoder.load()
             self._decoder_loaded = True
+            print("[Receiver] SemanticDecoder ready.")
         return self._decoder
 
     def parse_packet_metadata(self, file_path: Path) -> Optional[ReceivedPacket]:
@@ -184,6 +192,9 @@ class ReceiverDaemon:
         while True:
             # Scan for new files
             for file_path in self.watch_directory.glob("*.json"):
+                # Skip sender-side control files (e.g. _manifest.json)
+                if file_path.name.startswith("_"):
+                    continue
                 # Skip if already processed
                 if file_path.name in self.processed_files:
                     continue
@@ -203,6 +214,9 @@ class ReceiverDaemon:
             # Check if buffer is ready for reassembly
             if self.buffer.is_complete():
                 await self.reassemble_and_decode()
+                if self._exit_after_decode and self._done:
+                    print("[Receiver] exit-after-decode set; shutting down.")
+                    return
 
             # Sleep before next poll
             await asyncio.sleep(self.poll_interval)
@@ -218,23 +232,38 @@ class ReceiverDaemon:
             print("[Receiver] No packets to reassemble")
             return
 
-        print(f"[Receiver] Reassembled sequence: {media_ids}")
+        print(f"[Receiver] Reassembled sequence ({len(media_ids)} items): {media_ids}")
 
-        # Decode message (if decoder is available)
+        if not self._decode_enabled:
+            print("[Receiver] Decoding disabled (sniff-only mode); skipping decode.")
+            print("-" * 60)
+            return
+
+        # Decode media sequence back to semantic meaning
         try:
-            # Note: In simulation mode without actual indices,
-            # we would just log the sequence
-            print(f"[Receiver] Media sequence: {media_ids}")
-
-            # Uncomment when indices are available:
-            # decoded_message = self.decoder.decode(media_ids)
-            # print(f"[Receiver] Decoded message: {decoded_message}")
-            # self.decoded_messages.append(decoded_message)
-
+            result = self.decoder.decode(media_ids)
         except Exception as e:
             print(f"[Receiver] Decoding error: {e}")
+            print("-" * 60)
+            return
 
+        print("")
+        print("=" * 60)
+        print("[Receiver] DECODED MESSAGE")
+        print("=" * 60)
+        for i, item in enumerate(result.decoded, 1):
+            status = "OK " if item.verified else "MISS"
+            snippet = item.content if len(item.content) <= 80 else item.content[:77] + "..."
+            print(f"  {i:2d}. [{status}] [{item.modality}] {item.media_id}")
+            print(f"       \"{snippet}\"")
         print("-" * 60)
+        print(f"  Verification rate : {result.verification_rate:.1%}")
+        print(f"  All verified      : {result.all_verified}")
+        print(f"  Reconstructed     : \"{result.reconstructed_meaning}\"")
+        print("=" * 60)
+        self.decoded_messages.append(result.reconstructed_meaning)
+        print("-" * 60)
+        self._done = True
 
     async def run(self):
         """Run the receiver daemon."""
@@ -275,6 +304,17 @@ def main():
         default=1.0,
         help="Seconds between directory polls"
     )
+    parser.add_argument(
+        "--no-decode",
+        action="store_true",
+        help="Sniff-only mode: log reassembled media IDs but skip decoding "
+             "(use when FAISS indices are not available in the container)"
+    )
+    parser.add_argument(
+        "--exit-after-decode",
+        action="store_true",
+        help="Exit after the first successful reassembly+decode (one-shot demo mode)"
+    )
 
     args = parser.parse_args()
 
@@ -282,7 +322,9 @@ def main():
     receiver = ReceiverDaemon(
         watch_directory=Path(args.watch),
         silence_threshold=args.timeout,
-        poll_interval=args.poll_interval
+        poll_interval=args.poll_interval,
+        decode_enabled=not args.no_decode,
+        exit_after_decode=args.exit_after_decode,
     )
 
     # Run daemon

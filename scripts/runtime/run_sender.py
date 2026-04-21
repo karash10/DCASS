@@ -9,11 +9,11 @@ media-packet metadata to the shared channel directory that Bob
 
 Modes
 -----
-auto   – Try RL → GAN → static  (recommended; always succeeds)
-rl     – RL only, static fallback if checkpoint is missing
-gan    – GAN only, static fallback if checkpoint is missing
-static – Handcrafted NoiseController (no models needed)
-train  – Train the RL agent in-container (for later use)
+static – Handcrafted NoiseController (no models needed) **[default — review demo]**
+gan    – GAN only, static fallback if checkpoint is missing  [future review]
+rl     – RL only, static fallback if checkpoint is missing   [future review]
+auto   – Try RL → GAN → static  (cascade)                    [future review]
+train  – Train the RL agent in-container                     [future review]
 """
 
 import argparse
@@ -291,10 +291,11 @@ def main():
     parser.add_argument(
         "--mode", type=str,
         choices=["auto", "rl", "gan", "static", "train"],
-        default="auto",
+        default="static",
         help=(
-            "Scheduling mode. 'auto' tries rl→gan→static cascade. "
-            "'train' trains the RL agent in-container."
+            "Scheduling mode. Default 'static' uses the handcrafted "
+            "NoiseController (no model checkpoints required). "
+            "'auto' tries rl→gan→static cascade. 'train' trains the RL agent."
         ),
     )
     parser.add_argument(
@@ -323,11 +324,17 @@ def main():
     )
     parser.add_argument(
         "--sequence-length", type=int, default=20,
-        help="Number of media items in the test sequence",
+        help="Fallback number of media items when --no-encode is set",
     )
     parser.add_argument(
         "--message", type=str, default="Meet at the cafe at noon",
-        help="Secret message (for display; encoding is upstream)",
+        help="Secret message to encode into a media sequence",
+    )
+    parser.add_argument(
+        "--no-encode",
+        action="store_true",
+        help="Skip SemanticEncoder and transmit dummy media_NNN IDs "
+             "(sniff test only; Bob won't be able to decode)",
     )
     parser.add_argument(
         "--dry-run", action="store_true",
@@ -356,10 +363,23 @@ def main():
     )
     writer = PacketWriter(shared_dir=Path(args.shared_dir))
 
-    # Build a dummy media sequence (in production this comes from the encoder)
-    media_ids = [f"media_{i:03d}" for i in range(args.sequence_length)]
-
     log.info('Secret message: "%s"', args.message)
+
+    if args.no_encode:
+        media_ids = [f"media_{i:03d}" for i in range(args.sequence_length)]
+        log.warning("--no-encode: transmitting %d dummy IDs (Bob cannot decode)",
+                    len(media_ids))
+    else:
+        from src.engine.encoder import SemanticEncoder
+        log.info("Loading SemanticEncoder and indices...")
+        encoder = SemanticEncoder(expand_synonyms=True)
+        encoder.load()
+        log.info("Encoding message into media sequence...")
+        encode_result = encoder.encode(args.message)
+        media_ids = encode_result.media_ids
+        log.info("Encoder produced %d media items: %s",
+                 len(media_ids), encode_result.modality_breakdown)
+
     log.info("Media sequence length: %d", len(media_ids))
 
     gan_ckpt = Path(args.gan_checkpoint) if args.gan_checkpoint else None
