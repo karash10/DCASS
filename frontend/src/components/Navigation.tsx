@@ -12,7 +12,6 @@ export default function Navigation() {
     { href: '/encode', label: 'Encode' },
     { href: '/decode', label: 'Decode' },
     { href: '/wire', label: 'Wire View' },
-    { href: '/decode', label: 'Decode' },
   ];
 
   return (
