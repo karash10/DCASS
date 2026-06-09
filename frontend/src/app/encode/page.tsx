@@ -8,11 +8,13 @@ import { encodeMessage, EncodeResponse, checkReady } from '@/lib/api';
 import axios from 'axios';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+type TransmissionMode = 'static' | 'rl' | 'gan' | 'auto';
 
 export default function EncodePage() {
   const router = useRouter();
   const [message, setMessage] = useState('');
   const [mode, setMode] = useState<'best' | 'round_robin' | 'balanced'>('best');
+  const [transmitMode, setTransmitMode] = useState<TransmissionMode>('auto');
   const [modalities, setModalities] = useState(['image', 'text']);
   const [loading, setLoading] = useState(false);
   const [transmitting, setTransmitting] = useState(false);
@@ -108,7 +110,7 @@ export default function EncodePage() {
       // speed_multiplier: 1.0 = real-time, 2.0 = 2x faster, etc.
       await axios.post(`${API_BASE}/api/transmit`, {
         media_ids: result.media_ids,
-        mode: 'static',
+        mode: transmitMode,
         base_delay: 1.5,  // Shorter delays for demo
         num_channels: 3,
         message: message,
@@ -123,6 +125,13 @@ export default function EncodePage() {
     } finally {
       setTransmitting(false);
     }
+  };
+
+  const handleOpenDecode = () => {
+    if (!result) return;
+    const ids = encodeURIComponent(result.media_ids.join(','));
+    const original = encodeURIComponent(message);
+    router.push(`/decode?ids=${ids}&original=${original}`);
   };
 
   const getModalityColor = (modality: string) => {
@@ -198,6 +207,25 @@ export default function EncodePage() {
                       ))}
                     </div>
                   </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Transmission Mode
+                    </label>
+                    <select
+                      value={transmitMode}
+                      onChange={(e) => setTransmitMode(e.target.value as TransmissionMode)}
+                      className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-white focus:outline-none focus:border-primary"
+                    >
+                      <option value="auto">Auto (RL {'->'} GAN {'->'} Static)</option>
+                      <option value="rl">RL Preferred</option>
+                      <option value="gan">GAN Preferred</option>
+                      <option value="static">Static Only</option>
+                    </select>
+                    <div className="mt-2 text-xs text-gray-500">
+                      Works with indices-only setups. If advanced models are unavailable, the backend can fall back automatically.
+                    </div>
+                  </div>
                 </div>
               </Card>
 
@@ -241,13 +269,21 @@ export default function EncodePage() {
               </button>
 
               {result && !loading && (
-                <button
-                  onClick={handleTransmit}
-                  disabled={transmitting}
-                  className="w-full bg-success hover:bg-success/90 disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-semibold py-4 px-6 rounded-lg transition-colors text-lg"
-                >
-                  {transmitting ? '📡 Transmitting...' : '📡 Transmit on Wire View'}
-                </button>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <button
+                    onClick={handleTransmit}
+                    disabled={transmitting}
+                    className="w-full bg-success hover:bg-success/90 disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-semibold py-4 px-6 rounded-lg transition-colors text-lg"
+                  >
+                    {transmitting ? '📡 Transmitting...' : '📡 Transmit on Wire View'}
+                  </button>
+                  <button
+                    onClick={handleOpenDecode}
+                    className="w-full bg-gray-800 hover:bg-gray-700 border border-gray-700 text-white font-semibold py-4 px-6 rounded-lg transition-colors text-lg"
+                  >
+                    🔎 Open in Decode
+                  </button>
+                </div>
               )}
 
               {error && (

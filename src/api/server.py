@@ -22,6 +22,8 @@ from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from src.corpus.index.unified_index import resolve_indices_base_path
+
 
 # ---------------------------------------------------------------------------
 # App
@@ -232,7 +234,7 @@ def search(req: SearchRequest):
 @app.get("/api/status", response_model=StatusResponse)
 def status():
     import torch
-    indices_path = Path(__file__).parent.parent.parent / "storage" / "data" / "indices"
+    indices_path = resolve_indices_base_path()
     models_path = Path(__file__).parent.parent.parent / "storage" / "models"
 
     index_info = {}

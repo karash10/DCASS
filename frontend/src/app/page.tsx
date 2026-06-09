@@ -19,7 +19,7 @@ export default function Home() {
               Encode messages using semantically aligned media without altering any carrier content.
             </p>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-12">
               <Link 
                 href="/status"
                 className="bg-gray-900 border border-gray-800 rounded-lg p-6 hover:border-primary transition-colors"
@@ -39,6 +39,17 @@ export default function Home() {
                 <h3 className="text-lg font-semibold text-white mb-2">Encode Message</h3>
                 <p className="text-sm text-gray-400">
                   Transform secret messages into semantic media sequences
+                </p>
+              </Link>
+
+              <Link 
+                href="/decode"
+                className="bg-gray-900 border border-gray-800 rounded-lg p-6 hover:border-primary transition-colors"
+              >
+                <div className="text-3xl mb-3">🔎</div>
+                <h3 className="text-lg font-semibold text-white mb-2">Decode Sequence</h3>
+                <p className="text-sm text-gray-400">
+                  Reconstruct semantic meaning from media IDs using loaded indices
                 </p>
               </Link>
 

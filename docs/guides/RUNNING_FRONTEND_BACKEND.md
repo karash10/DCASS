@@ -149,7 +149,7 @@ Once running, access:
 | http://localhost:3000 | Dashboard / Status | ✅ Working |
 | http://localhost:3000/encode | Encode Message | ✅ Working |
 | http://localhost:3000/wire | Wire View (Traffic) | ✅ Working |
-| http://localhost:3000/decode | Decode Message | ⚠️ Not implemented yet |
+| http://localhost:3000/decode | Decode Message | ✅ Working |
 
 ### Build for Production
 

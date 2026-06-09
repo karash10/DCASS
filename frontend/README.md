@@ -49,6 +49,7 @@ The frontend will start on `http://localhost:3000`
 | `/` | Home page with feature overview |
 | `/status` | System status dashboard |
 | `/encode` | Message encoding interface (Alice) |
+| `/decode` | Message decoding interface |
 | `/wire` | Real-time packet transmission view |
 
 ## Dynamic → Static Fallback
@@ -133,6 +134,7 @@ frontend/
 │   │   ├── page.tsx      # Home page
 │   │   ├── status/       # Status dashboard
 │   │   ├── encode/       # Encode interface
+│   │   ├── decode/       # Decode interface
 │   │   └── wire/         # Wire view
 │   ├── components/       # Reusable React components
 │   │   ├── Navigation.tsx
