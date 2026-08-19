@@ -1,0 +1,64 @@
+{
+  "secret": "Three dogs on the beach",
+  "session_start": "2026-08-01T07:21:59.892284+00:00",
+  "session_end": "2026-08-01T07:22:00.522899+00:00",
+  "latent_seed": 1597507948,
+  "time_of_day_hour": 0,
+  "anti_analysis": 0.244,
+  "delay_stats": {
+    "min_s": 0.286,
+    "max_s": 0.344,
+    "mean_s": 0.315,
+    "stdev_s": 0.041,
+    "cv": 0.131
+  },
+  "channel_dist": {
+    "tertiary": 2
+  },
+  "events": [
+    {
+      "pos": 0,
+      "carrier_id": "flickr30k_3492383096",
+      "chunk": "three dogs",
+      "caption": "Three dogs are playing together on the sandy shore of a lake.",
+      "channel": "tertiary",
+      "planned_delay": 0.3441,
+      "actual_delay": 0.3445,
+      "confidence": 0.064,
+      "source": "flickr"
+    },
+    {
+      "pos": 1,
+      "carrier_id": "flickr30k_110964272",
+      "chunk": "beach",
+      "caption": "A small child and an adult walk on the beach in front of ocean waves.",
+      "channel": "tertiary",
+      "planned_delay": 0.2857,
+      "actual_delay": 0.286,
+      "confidence": 0.064,
+      "source": "flickr"
+    }
+  ],
+  "delay_sequences": [
+    [
+      0.31,
+      0.366
+    ],
+    [
+      0.249,
+      0.189
+    ],
+    [
+      0.54,
+      0.51
+    ],
+    [
+      0.31,
+      0.277
+    ],
+    [
+      0.561,
+      0.429
+    ]
+  ]
+}

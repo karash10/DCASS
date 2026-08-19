@@ -1,0 +1,32 @@
+{
+  "secret": "Kings are three legged animals of the ocean",
+  "chunks": [
+    "kings are three legged animals",
+    "ocean"
+  ],
+  "carriers": [
+    {
+      "chunk": "kings are three legged animals",
+      "id": "flickr30k_2973269132",
+      "caption": "A lioness is chasing a black bison across a grassy plain.",
+      "score": 0.275,
+      "source": "flickr",
+      "url": "",
+      "path": "storage/data/raw/flickr30k/images/2973269132.jpg"
+    },
+    {
+      "chunk": "ocean",
+      "id": "nocaps_test_007602",
+      "caption": "",
+      "score": 0.2696,
+      "source": "nocaps",
+      "url": "https://s3.amazonaws.com/nocaps/test/b23728a063dbccae.jpg",
+      "path": ""
+    }
+  ],
+  "reconstructed": "A lioness is chasing a black bison across a grassy plain. | ",
+  "metrics": {
+    "bleu1": 0.0,
+    "semantic_cosine": 0.5689
+  }
+}

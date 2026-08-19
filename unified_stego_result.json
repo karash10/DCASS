@@ -1,0 +1,71 @@
+{
+  "secret": "Three dogs on the beach",
+  "chunks": [
+    "three dogs",
+    "beach"
+  ],
+  "carriers": [
+    {
+      "chunk": "three dogs",
+      "media_id": "flickr30k_2257798999",
+      "source": "flickr",
+      "faiss_score": 0.2949,
+      "caption_score": 0.9503,
+      "combined_score": 0.6881,
+      "best_caption": "Three dogs play together.",
+      "url": ""
+    },
+    {
+      "chunk": "beach",
+      "media_id": "flickr30k_442594271",
+      "source": "flickr",
+      "faiss_score": 0.2784,
+      "caption_score": 0.9083,
+      "combined_score": 0.6563,
+      "best_caption": "A bunch of people at the beach.",
+      "url": ""
+    }
+  ],
+  "decoded": [
+    {
+      "chunk": "three dogs",
+      "caption": "Three dogs play together.",
+      "score": 0.9503,
+      "verified": true
+    },
+    {
+      "chunk": "beach",
+      "caption": "A bunch of people at the beach.",
+      "score": 0.9083,
+      "verified": true
+    }
+  ],
+  "dispatch_events": [
+    {
+      "pos": 0,
+      "carrier_id": "flickr30k_2257798999",
+      "chunk": "three dogs",
+      "channel": "tertiary",
+      "planned_delay": 0.3587,
+      "source": "flickr",
+      "sent_at": "2026-08-05T04:01:10.593740+00:00"
+    },
+    {
+      "pos": 1,
+      "carrier_id": "flickr30k_442594271",
+      "chunk": "beach",
+      "channel": "tertiary",
+      "planned_delay": 0.3784,
+      "source": "flickr",
+      "sent_at": "2026-08-05T04:01:10.594749+00:00"
+    }
+  ],
+  "metrics": {
+    "bleu1": 0.2727,
+    "bleu2": 0.1,
+    "semantic_cosine": 0.9225,
+    "avg_caption_score": 0.9293,
+    "verification_rate": 1.0,
+    "reconstructed": "Three dogs play together. A bunch of people at the beach."
+  }
+}

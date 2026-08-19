@@ -1,0 +1,92 @@
+{
+  "secret": "Three dogs on the beach",
+  "reconstruction": "A smaller dog sniffs a larger dog in the hills. with A woman and a child are walking on a beach.",
+  "accuracy": {
+    "weighted_cosine": 0.7807,
+    "message_cosine": 0.8138,
+    "mean_chunk_cosine": 0.7801,
+    "target": 0.7,
+    "passed": true
+  },
+  "carriers": [
+    {
+      "chunk": "three dogs",
+      "media_id": "flickr30k_1786425974",
+      "source": "flickr",
+      "best_caption": "A smaller dog sniffs a larger dog in the hills.",
+      "caption_score": 0.8125830292701721,
+      "faiss_score": 0.299,
+      "url": ""
+    },
+    {
+      "chunk": "beach",
+      "media_id": "flickr30k_110964272",
+      "source": "flickr",
+      "best_caption": "A woman and a child are walking on a beach.",
+      "caption_score": 0.7474818229675293,
+      "faiss_score": 0.2864,
+      "url": ""
+    }
+  ],
+  "decode_chunks": [
+    {
+      "original": "three dogs",
+      "decoded": "A smaller dog sniffs a larger dog in the hills.",
+      "cosine": 0.8126,
+      "passed": true
+    },
+    {
+      "original": "beach",
+      "decoded": "A woman and a child are walking on a beach.",
+      "cosine": 0.7475,
+      "passed": true
+    }
+  ],
+  "gan_timing": {
+    "seed": 1939039528,
+    "tod_hour": 2,
+    "delays_raw": [
+      15.037,
+      0.772,
+      0.99,
+      1.6,
+      1.719,
+      1.732,
+      1.721,
+      1.705,
+      1.683,
+      1.659
+    ],
+    "cv": 1.4997,
+    "channels": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "events": [
+      {
+        "pos": 0,
+        "id": "flickr30k_1786425974",
+        "chunk": "three dogs",
+        "channel": "secondary",
+        "delay_s": 15.0371,
+        "source": "flickr"
+      },
+      {
+        "pos": 1,
+        "id": "flickr30k_110964272",
+        "chunk": "beach",
+        "channel": "secondary",
+        "delay_s": 0.7718,
+        "source": "flickr"
+      }
+    ]
+  }
+}
